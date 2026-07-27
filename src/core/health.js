@@ -318,7 +318,14 @@ export async function launch({ port, kill_existing, _deps } = {}) {
     // MSIX/Windows Store install — InstallLocation is in WindowsApps, which is ACL-restricted
     // for normal `dir` enumeration but readable via Get-AppxPackage without elevation.
     try {
-      const ps = 'powershell -NoProfile -Command "(Get-AppxPackage -Name \'TradingView.Desktop\' -ErrorAction SilentlyContinue).InstallLocation"';
+      // Wildcard match, not an exact -Name. TradingView ships under at least two
+      // MSIX identities: 'TradingView.Desktop' (publisher n534cwy3pjxzj, direct
+      // MSIX from tvd-packages) and '31178TradingViewInc.TradingView' (publisher
+      // q4jpyh43s5mv6, Microsoft Store). An exact -Name silently finds nothing on
+      // Store installs, so detection fell through to `where TradingView.exe` and
+      // reported TradingView as not installed. Select -First 1 keeps it
+      // deterministic if both identities are somehow present.
+      const ps = 'powershell -NoProfile -Command "(Get-AppxPackage *TradingView* | Select-Object -First 1).InstallLocation"';
       const installDir = deps.execSync(ps, { timeout: 5000 }).toString().trim();
       if (installDir) {
         const candidate = `${installDir}\\TradingView.exe`;
