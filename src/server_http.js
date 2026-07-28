@@ -105,8 +105,26 @@ function timingSafeEqual(a, b) {
   return mismatch === 0;
 }
 
+// Accepts auth two ways:
+//   1. Authorization: Bearer <token> header (used by Jarvis/Parallax hermes profiles)
+//   2. Path-embedded token: POST /mcp/<token>  (for clients like claude.ai's web
+//      custom-connector UI that only offer a bare URL field, no header/OAuth config)
+// Path-embedded tokens are TLS-protected in transit like headers are, but may land in
+// access logs (CF, proxy, etc.) where header values typically wouldn't - acceptable
+// tradeoff for a homelab single-token service, not for anything higher-value.
+function extractAuth(req) {
+  const header = req.headers['authorization'];
+  if (header) return header;
+
+  const url = req.url || '';
+  const match = url.match(/^\/mcp\/([^/?]+)/);
+  if (match) return `Bearer ${decodeURIComponent(match[1])}`;
+
+  return '';
+}
+
 const httpServer = http.createServer(async (req, res) => {
-  const auth = req.headers['authorization'] || '';
+  const auth = extractAuth(req);
   const expected = `Bearer ${TOKEN}`;
   if (!auth || !timingSafeEqual(auth, expected)) {
     res.writeHead(401, { 'content-type': 'application/json' });
@@ -114,7 +132,9 @@ const httpServer = http.createServer(async (req, res) => {
     return;
   }
 
-  if (req.url !== '/mcp') {
+  const path = (req.url || '').split('?')[0];
+  const isMcpPath = path === '/mcp' || /^\/mcp\/[^/]+$/.test(path);
+  if (!isMcpPath) {
     res.writeHead(404, { 'content-type': 'application/json' });
     res.end(JSON.stringify({ error: 'not found - use /mcp' }));
     return;
@@ -160,6 +180,6 @@ const httpServer = http.createServer(async (req, res) => {
 });
 
 httpServer.listen(PORT, BIND, () => {
-  process.stderr.write(`tradingview-mcp HTTP (stateless, bearer auth) listening on ${BIND}:${PORT}/mcp\n`);
+  process.stderr.write(`tradingview-mcp HTTP (stateless, bearer OR path token auth) listening on ${BIND}:${PORT}\n`);
   process.stderr.write('Unofficial tool. Not affiliated with TradingView Inc. or Anthropic.\n');
 });
