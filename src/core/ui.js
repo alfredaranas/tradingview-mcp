@@ -132,7 +132,8 @@ export async function layoutSwitch({ name }) {
     new Promise(function(resolve) {
       try {
         var target = ${escaped};
-        if (/^\\d+$/.test(target)) { window.TradingViewApi.loadChartFromServer(target); resolve({success: true, method: 'loadChartFromServer', id: target, source: 'internal_api'}); return; }
+        var __ld=function(id){var l=window.TradingViewApi._loadChartService;var st=l.state();if(st&&st.value)st=st.value();var e=(st.chartList||[]).filter(function(c){return String(c.id)===String(id);})[0];if(!e)throw new Error('layout id '+id+' not in chartList');l.loadChart(e,false);return e.url;};
+        if (/^\\d+$/.test(target)) { var sid=__ld(target); resolve({success: true, method: 'loadChart', id: target, sid: sid, source: 'internal_api'}); return; }
         window.TradingViewApi.getSavedCharts(function(charts) {
           if (!charts || !Array.isArray(charts)) { resolve({success: false, error: 'getSavedCharts returned no data', source: 'internal_api'}); return; }
           var match = null;
@@ -140,8 +141,8 @@ export async function layoutSwitch({ name }) {
           if (!match) { for (var j = 0; j < charts.length; j++) { var cn = (charts[j].name || charts[j].title || '').toLowerCase(); if (cn.indexOf(target.toLowerCase()) !== -1) { match = charts[j]; break; } } }
           if (!match) { resolve({success: false, error: 'Layout "' + target + '" not found.', source: 'internal_api'}); return; }
           var chartId = match.id || match.chartId;
-          window.TradingViewApi.loadChartFromServer(chartId);
-          resolve({success: true, method: 'loadChartFromServer', id: chartId, name: match.name || match.title, source: 'internal_api'});
+          var sid=__ld(chartId);
+          resolve({success: true, method: 'loadChart', id: chartId, sid: sid, name: match.name || match.title, source: 'internal_api'});
         });
         setTimeout(function() { resolve({success: false, error: 'getSavedCharts timed out', source: 'internal_api'}); }, 5000);
       } catch(e) { resolve({success: false, error: e.message, source: 'internal_api'}); }
@@ -166,6 +167,10 @@ export async function layoutSwitch({ name }) {
   `);
 
   if (dismissed) await new Promise(r => setTimeout(r, 1000));
+  const verifyJs = '(function(){var s=window.TradingViewApi._saveChartService;var v=typeof s.layoutId==="function"?s.layoutId():s.layoutId;if(v&&typeof v==="object"&&v.value)v=v.value();return String(v)===' + JSON.stringify(String(result.sid)) + ';})()';
+  let landed = false;
+  for (let i = 0; i < 20 && !landed; i++) { await new Promise(r => setTimeout(r, 500)); landed = await evaluate(verifyJs); }
+  if (!landed) throw new Error('layout switch did not take effect (layoutId never became ' + result.sid + ')');
   return { success: true, layout: result.name || name, layout_id: result.id, source: result.source, action: 'switched', unsaved_dialog_dismissed: dismissed };
 }
 
