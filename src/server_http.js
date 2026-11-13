@@ -124,6 +124,14 @@ function extractAuth(req) {
 }
 
 const httpServer = http.createServer(async (req, res) => {
+  // 2026-11-13: claude.ai probes OAuth discovery before connecting. A 401 here
+  // makes it think a sign-in is required, and Reconnect can never finish.
+  // This server has no OAuth (the token is in the URL), so answer 404.
+  if ((req.url || '').startsWith('/.well-known/')) {
+    res.writeHead(404, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ error: 'not_found' }));
+    return;
+  }
   const auth = extractAuth(req);
   const expected = `Bearer ${TOKEN}`;
   if (!auth || !timingSafeEqual(auth, expected)) {
