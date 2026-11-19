@@ -146,6 +146,49 @@ export async function evaluate(expression, opts = {}) {
   return result.result?.value;
 }
 
+// TradingView allows one active data session per user. When the account is
+// opened on another device, this page keeps its chart API but the websocket
+// feed is closed: mainSeries stays "loading" with zero bars and a
+// "Session disconnected" banner offers a Connect button. Every read then fails
+// with a misleading "still loading" or "Uncaught (in promise)" error.
+const DATA_SESSION_JS = `(function() {
+  var r = { connected: null, disconnected_by_other_device: false };
+  try {
+    var ci = window.TradingViewApi._chartApiInstance;
+    if (ci && typeof ci.connected === 'function') r.connected = !!ci.connected();
+  } catch (e) {}
+  try {
+    var t = document.body.innerText || '';
+    var i = t.indexOf('Session disconnected');
+    if (i >= 0) {
+      var s = t.slice(i, i + 700);
+      r.disconnected_by_other_device = /another browser or device/i.test(s);
+      var m = s.match(/Device:\\s*(.+?)\\s+Browser:\\s*(.+?)\\s+Additional/);
+      if (m) { r.other_device = m[1].trim(); r.other_browser = m[2].trim(); }
+    }
+  } catch (e) {}
+  return r;
+})()`;
+
+export async function getDataSessionState() {
+  try { return await evaluate(DATA_SESSION_JS); } catch { return null; }
+}
+
+/** Returns an Error describing a dropped TradingView data session, or null if the feed looks connected. */
+export async function dataSessionError() {
+  const s = await getDataSessionState();
+  if (!s || s.connected !== false) return null;
+  let msg = 'TradingView data session is disconnected on this machine, so no quotes or bars are loading.';
+  if (s.disconnected_by_other_device) {
+    const who = [s.other_device, s.other_browser].filter(Boolean).join(', ');
+    msg += ` TradingView ended it because the account was opened on another device${who ? ' (' + who + ')' : ''}; only one active session is allowed per user.`
+      + ' Pressing Connect in TradingView on this machine reclaims it but disconnects the other device.';
+  }
+  const err = new Error(msg);
+  err.code = 'TV_DATA_SESSION_DISCONNECTED';
+  return err;
+}
+
 export async function evaluateAsync(expression) {
   return evaluate(expression, { awaitPromise: true });
 }

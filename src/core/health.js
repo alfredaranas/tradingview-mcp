@@ -1,7 +1,7 @@
 /**
  * Core health/discovery/launch logic.
  */
-import { getClient, getTargetInfo, evaluate, CDP_HOST, CDP_PORT } from '../connection.js';
+import { getClient, getTargetInfo, evaluate, CDP_HOST, CDP_PORT, getDataSessionState } from '../connection.js';
 import { existsSync, cpSync, rmSync, readdirSync } from 'fs';
 import { execSync, spawn } from 'child_process';
 import { dirname, basename, join } from 'path';
@@ -67,10 +67,21 @@ export async function healthCheck() {
   `);
 
   const update = await checkForUpdate();
+  const session = await getDataSessionState();
+  const dataConnected = session ? session.connected : null;
 
   return {
     success: true,
     cdp_connected: true,
+    data_connected: dataConnected,
+    ...(dataConnected === false && {
+      data_session: {
+        disconnected_by_other_device: !!session.disconnected_by_other_device,
+        ...(session.other_device && { other_device: session.other_device }),
+        ...(session.other_browser && { other_browser: session.other_browser }),
+        hint: 'TradingView data feed is closed on this machine; quote and bar reads will fail until it reconnects. Pressing Connect in TradingView here disconnects the other device.',
+      },
+    }),
     target_id: target.id,
     target_url: target.url,
     target_title: target.title,

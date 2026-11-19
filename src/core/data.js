@@ -1,7 +1,7 @@
 /**
  * Core data access logic.
  */
-import { evaluate, evaluateAsync, KNOWN_PATHS, safeString } from '../connection.js';
+import { evaluate, evaluateAsync, KNOWN_PATHS, safeString, dataSessionError } from '../connection.js';
 import { waitForChartReady } from '../wait.js';
 
 const MAX_OHLCV_BARS = 500;
@@ -155,6 +155,8 @@ export async function getOhlcv({ count, summary } = {}) {
   } catch { data = null; }
 
   if (!data || !data.bars || data.bars.length === 0) {
+    const sessionErr = await dataSessionError();
+    if (sessionErr) throw sessionErr;
     throw new Error('Could not extract OHLCV data. The chart may still be loading.');
   }
 
@@ -379,6 +381,11 @@ async function _getQuoteInternal({ symbol } = {}) {
   const requested = (symbol || '').toString().trim();
   let originalSymbol = null;
   let needsRestore = false;
+
+  {
+    const sessionErr = await dataSessionError();
+    if (sessionErr) throw sessionErr;
+  }
 
   if (requested) {
     try { originalSymbol = await evaluate(`${CHART_API}.symbol()`); } catch (e) {}

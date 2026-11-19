@@ -1,7 +1,7 @@
 /**
  * Core batch execution logic.
  */
-import { evaluate, evaluateAsync, getClient, getChartApi, getChartCollection, safeString } from '../connection.js';
+import { evaluate, evaluateAsync, getClient, getChartApi, getChartCollection, safeString, dataSessionError } from '../connection.js';
 import { waitForChartReady } from '../wait.js';
 import { writeFileSync, mkdirSync } from 'fs';
 import { join, dirname } from 'path';
@@ -14,6 +14,11 @@ export async function batchRun({ symbols, timeframes, action, delay_ms, ohlcv_co
   const tfs = timeframes && timeframes.length > 0 ? timeframes : [null];
   const delay = delay_ms || 2000;
   const results = [];
+
+  const sessionErr = await dataSessionError();
+  if (sessionErr) {
+    return { success: false, code: sessionErr.code, error: sessionErr.message, total_iterations: 0, successful: 0, failed: 0, results };
+  }
 
   let colPath, apiPath;
   try { colPath = await getChartCollection(); } catch {}
